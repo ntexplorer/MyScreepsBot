@@ -1,7 +1,5 @@
 'use strict';
 
-Object.defineProperty(exports, '__esModule', { value: true });
-
 var sourceMapGenerator = {};
 
 var base64Vlq = {};
@@ -3166,7 +3164,7 @@ let consumer = null;
 
 // 第一次报错时创建 sourceMap
 const getConsumer = function () {
-    if (consumer == null) consumer = new SourceMapConsumer(require("main.js.map"));
+    if (consumer == null) consumer = new SourceMapConsumer(require("main.ts.map"));
     return consumer
 };
 
@@ -3227,36 +3225,159 @@ const sourceMappedStackTrace = function (error) {
  */
 const errorMapper = function (next) {
     return () => {
-        try {
-            // 执行玩家代码
-            next();
-        }
-        catch (e) {
-            if (e instanceof Error) {
-                // 渲染报错调用栈，沙盒模式用不了这个
-                const errorMessage = Game.rooms.sim ?
-                    `沙盒模式无法使用 source-map - 显示原始追踪栈<br>${_.escape(e.stack)}` :
-                    `${_.escape(sourceMappedStackTrace(e))}`;
+		try {
+			// 执行玩家代码
+			next();
+		} catch (e) {
+			if (e instanceof Error) {
+				// 渲染报错调用栈，沙盒模式用不了这个
+				const errorMessage = Game.rooms.sim ?
+					`沙盒模式无法使用 source-map - 显示原始追踪栈<br>${_.escape(e.stack)}` :
+					`${_.escape(sourceMappedStackTrace(e))}`;
 
-                console.log(`<text style="color:#ef9a9a">${errorMessage}</text>`);
-            }
-            // 处理不了，直接抛出
-            else throw e
+				console.log(`<text style="color:#ef9a9a">${errorMessage}</text>`);
+			}
+			// 处理不了，直接抛出
+			else throw e
         }
     }
 };
 
-/**
- * 显示 hello world
+/*
+ * Module code goes here. Use 'module.exports' to export things:
+ * module.exports.thing = 'a thing';
+ *
+ * You can import it from another modules like this:
+ * var mod = require('role.harvester');
+ * mod.thing == 'a thing'; // true
  */
-const sayHello = function () {
-    console.log('hello world');
-    throw new Error('我是 sayHello 里的报错')
+let roleHarvester = {
+	run: function (creep, source) {
+		if (creep.store.getFreeCapacity() > 0) {
+			if (creep.harvest(source) === ERR_NOT_IN_RANGE) {
+				creep.moveTo(source, {visualizePathStyle: {stroke: '#ffaa00'}});
+			}
+		} else {
+			/* ES6箭头函数
+            let fn = (参数) => {
+            //函数体
+            return 返回值
+            }
+             */
+			let targets = creep.room.find(FIND_STRUCTURES, {
+				filter: (structure) => {
+					return (structure.structureType === STRUCTURE_EXTENSION ||
+							structure.structureType === STRUCTURE_SPAWN) &&
+						structure.store.getFreeCapacity(RESOURCE_ENERGY) > 0;
+				}
+			});
+			if (targets.length > 0) {
+				if (creep.transfer(targets[0], RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+					creep.moveTo(targets[0], {visualizePathStyle: {stroke: '#ffffff'}});
+				}
+			}
+		}
+	}
 };
 
-const loop = errorMapper(() => {
-    sayHello();
-});
+/*
+ * Module code goes here. Use 'module.exports' to export things:
+ * module.exports.thing = 'a thing';
+ *
+ * You can import it from another modules like this:
+ * var mod = require('role.upgrader');
+ * mod.thing == 'a thing'; // true
+ */
+let roleUpgrader = {
+	run: function (creep, source, controller) {
+		if (creep.store[RESOURCE_ENERGY] === 0) {
+			if (creep.harvest(source) === ERR_NOT_IN_RANGE) {
+				creep.moveTo(source);
+			}
+		} else {
+			if (creep.upgradeController(controller) === ERR_NOT_IN_RANGE) {
+				creep.moveTo(controller);
+			}
+		}
+	}
+};
+module.exports = roleUpgrader;
 
-exports.loop = loop;
+/*
+ * Module code goes here. Use 'module.exports' to export things:
+ * module.exports.thing = 'a thing';
+ *
+ * You can import it from another modules like this:
+ * var mod = require('role.harvester');
+ * mod.thing == 'a thing'; // true
+ */
+let roleBuilder = {
+	run: function (creep, source) {
+		// building flag on and creep has no energy
+		if (creep.memory.building && creep.store[RESOURCE_ENERGY] === 0) {
+			creep.memory.building = false;
+			creep.say('🔄 harvest');
+		}
+		// building flag off and creep has full energy
+		if (!creep.memory.building && creep.store.getFreeCapacity() === 0) {
+			creep.memory.building = true;
+			creep.say('🚧 build');
+		}
+		// when building flag on
+		if (creep.memory.building) {
+			let targets = creep.room.find(FIND_CONSTRUCTION_SITES);
+			if (targets.length) {
+				if (creep.build(targets[0]) === ERR_NOT_IN_RANGE) {
+					creep.moveTo(targets[0], {visualizePathStyle: {stroke: '#ffffff'}});
+				}
+			}
+		} else {
+			if (creep.harvest(source) === ERR_NOT_IN_RANGE) {
+				creep.moveTo(source, {visualizePathStyle: {stroke: '#ffaa00'}});
+			}
+		}
+	}
+};
+
+module.exports.loop = errorMapper(() => {
+	for (const name in Memory.creeps) {
+		if (!Game.creeps[name]) {
+			delete Memory.creeps[name];
+			console.log('Clearing non-existing creep memory: ', name);
+		}
+	}
+	let motherBase = Game.spawns['MotherBase'];
+	const source1 = motherBase.room.find(FIND_SOURCES)[0];
+	const source2 = motherBase.room.find(FIND_SOURCES)[1];
+	const controller1 = motherBase.room.controller;
+	let harvesters = _.filter(Game.creeps, (creep) => creep.memory.role === 'harvester');
+	//console.log('Harvesters: ' + harvesters.length);
+	let upgraders = _.filter(Game.creeps, (creep) => creep.memory.role === 'upgrader');
+	if (harvesters.length < 3) {
+		let newName = 'Harvester' + Game.time;
+		console.log('Spawning new harvester: ' + newName);
+		motherBase.spawnCreep([WORK, CARRY, MOVE], newName, {memory: {role: 'harvester'}});
+	} else if (upgraders.length < 2) {
+		let newName = 'Upgrader' + Game.time;
+		console.log('Spawning new upgrader: ' + newName);
+		motherBase.spawnCreep([WORK, CARRY, MOVE], newName, {memory: {role: 'upgrader'}});
+	}
+	if (motherBase.spawning) {
+		let spawningCreep = Game.creeps[motherBase.spawning.name];
+		motherBase.room.visual.text('🛠️' + spawningCreep.memory.role, Game.spawns['MotherBase'].pos.x + 1, Game.spawns['MotherBase'].pos.y, {
+			align: 'left',
+			opacity: 0.8
+		});
+	}
+	for (const name in Game.creeps) {
+		let creep = Game.creeps[name];
+		if (creep.memory.role === "harvester") {
+			roleHarvester.run(creep, source1);
+		} else if (creep.memory.role === "upgrader") {
+			roleUpgrader.run(creep, source2, controller1);
+		} else if (creep.memory.role === "builder") {
+			roleBuilder.run(creep, source2);
+		}
+	}
+});
 //# sourceMappingURL=main.js.map
